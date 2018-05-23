@@ -6,6 +6,7 @@
 #include <string.h>
 #include <thread>
 #include <semaphore.h>
+#include <unistd.h>
 #define INPUT_SIZE 10
 #define DEFAULT_S 4096
 
@@ -17,6 +18,7 @@ namespace libcow {
 		char **buffer, **copies;
 		int size;
 		sem_t mutex;
+		//static memory *instance;
 
 		char** getBuffer(int len, int offset) {
 			// returns a char array inside the major buffer
@@ -94,8 +96,13 @@ namespace libcow {
 
 				std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
 				std::cout << "Trying to allocate at position " << p << "..." << std::endl;
+				x.append(1, '\0');
+
+				sem_wait(&mutex);
 				x.copy(buffer[p], x.size(), os);
 				bitmap[p] = 1;
+				sem_post(&mutex);
+
 				std::cout << "Sucessfully allocated at position " << p << "!" << std::endl;
 				return 1;
 			}
@@ -104,6 +111,9 @@ namespace libcow {
 
 				std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
 				std::cout << "Memory Protection Fault, creating a copy of the content of position " << p << "..." << std::endl;
+				x.append(1, '\0');
+
+				sem_wait(&mutex);
 				if (modified[p] == 0)
 					copies[p] = new char[INPUT_SIZE];
 				if (bitmap[p] == 1)
@@ -112,13 +122,15 @@ namespace libcow {
 
 				x.copy(buffer[p], x.size(), os);
 				modified[p] = 1;
+				sem_post(&mutex);
+
 				std::cout << "Sucessfully created a copy of position " << p << "!" << std::endl;
 				//disable protection flag
 				protection[p] = 0;
 				return 1;
 			}
 		}
-		int read(int p, int len, int offset) {
+		/*int read(int p, int len, int offset) {
 			int i;
 
 			std::cout << std::endl << "========READ OPERATION========" << std::endl;
@@ -128,35 +140,58 @@ namespace libcow {
 			}
 			// Threating the read operation as an example of checkpoint copy to stable storage, because it enables the modify protection to the memory page
 			protection[p] = 1;
+			sleep(2);
 			std::cout << "BUFFER[" << p << "]: " << std::endl;
 			for (i = offset; i < len + offset; i++) {
 				std::cout << buffer[p][i] << " ";
 			}
 			std::cout << std::endl;
+			protection[p] = 0;
+			return 1;
+		}*/
+		int read(int p, int last_p) {
+			// Threating the read operation as an example of checkpoint copy to stable storage, because it enables the modify protection to the memory page
+			int i, j;
+
+			if ((p < 0) || (last_p > (size - 1))) {
+				std::cerr << "Insert a valid read interval." << std::endl;
+				return 0;
+			}
+
+			for (i = p; i <= last_p; i++)
+				protection[i] = 1;
+
+			sleep(2);
+			std::cout << std::endl << "========READ OPERATION========" << std::endl;
+
+			for (i = p; i <= last_p; i++) {
+				
+				if (modified[i] == 0) {
+					std::cout << "BUFFER [" << i << "]: " << std::endl;
+					for (j = 0; buffer[i][j] != '\0'; j++) {
+						std::cout << buffer[i][j] << " ";
+					}
+					std::cout << std::endl;
+					protection[i] = 0;
+				}
+				else {
+					std::cout << "COPY [" << i << "]: " << std::endl;
+					for (j = 0; copies[i][j] != '\0'; j++) {
+						std::cout << copies[i][j] << " ";
+					}
+					std::cout << std::endl;
+					protection[i] = 0;
+					delete[] copies[i];
+					modified[i] = 0;
+				}
+			}
 			return 1;
 		}
-
-		/*void operation(char x, std::string input, int p, int len) {
-			
-			if (x == 'w') {
-			
-				sem_wait(&mutex);
-				std::thread write_b(input, p);
-				sem_post(&mutex);
-			
-			}
-			else if (x == 'r') {
-				
-				sem_wait(&mutex);
-				std::thread read_b(p, len, 0);
-				sem_post(&mutex);
-			}
-		}*/
 
 		int* getMap(int len, int offset) {
 			int* aux = new int[len];
 
-			for (int i = offset; i < len + offset; i++) {
+			for (int i = offset; i < (len + offset); i++) {
 				aux[i] = bitmap[i];
 			}
 			return aux;
@@ -195,7 +230,30 @@ namespace libcow {
 			} // for
 			return;
 		} // void
-	}; //class
+
+	}; // class
 } // namespace
 
 #endif
+
+
+
+/*static memory* startInstance() {
+	if (instance == NULL)
+		instance = new memory();
+	return instance;
+}
+
+static memory* startInstance(int n) {
+	if (instance == NULL)
+		instance = new memory(n);
+	return instance;
+}
+
+void deleteInstance() {
+	if (instance != NULL) {
+		delete instance;
+		instance = NULL;
+	}
+	return;
+}*/
