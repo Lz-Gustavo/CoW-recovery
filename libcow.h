@@ -17,8 +17,8 @@ namespace libcow {
 		int *bitmap, *modified, *protection;
 		char **buffer, **copies;
 		int size;
-		sem_t mutex;
-		//static memory *instance;
+		sem_t acess_data;
+		sem_t data;
 
 		char** getBuffer(int len, int offset) {
 			// returns a char array inside the major buffer
@@ -47,7 +47,8 @@ namespace libcow {
 			modified = new int[DEFAULT_S]();
 			protection = new int[DEFAULT_S]();
 			size = DEFAULT_S;
-			sem_init(&mutex, 0, 1);
+			sem_init(&acess_data, 0, 1);
+			sem_init(&data, 0, 1);
 		}
 		memory(int n) {
 			buffer = new char*[n];
@@ -59,7 +60,8 @@ namespace libcow {
 			modified = new int[n]();
 			protection = new int[n]();
 			size = n;
-			sem_init(&mutex, 0, 1);
+			sem_init(&acess_data, 0, 1);
+			sem_init(&data, 0, 1);
 		}
 		~memory() {
 			int i;
@@ -72,6 +74,8 @@ namespace libcow {
 			delete[] bitmap;
 			delete[] modified;
 			delete[] protection;
+			sem_destroy(&acess_data);
+			sem_destroy(&data);
 		}
 
 		int write(std::string x, int p) {
@@ -86,69 +90,54 @@ namespace libcow {
 				std::cerr << "Insert a valid position." << std::endl;
 				return 0;
 			}
-			if ((protection[p] == 1) && (modified[p] == 1)) {
+			sem_wait(&acess_data);
+
+			if ((protection[p] == 1) && (copies[p] != nullptr)) {
 				std::cerr << "Insufficient memory avaiable to allocate a new copy, clear some data to continue." << std::endl;
+				sem_post(&acess_data);
 				return 0;
 			}
 			
 			if (protection[p] == 0) {
 				// buffer position is not protected
+				sem_post(&acess_data);
 
+				sem_wait(&data);
 				std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
 				std::cout << "Trying to allocate at position " << p << "..." << std::endl;
 				x.append(1, '\0');
 
-				sem_wait(&mutex);
 				x.copy(buffer[p], x.size(), os);
 				bitmap[p] = 1;
-				sem_post(&mutex);
+				sem_post(&data);
 
 				std::cout << "Sucessfully allocated at position " << p << "!" << std::endl;
 				return 1;
 			}
 			else {
 				// buffer position is protected and dont has a copy being used
+				sem_post(&acess_data);
 
+				sem_wait(&data);
 				std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
 				std::cout << "Memory Protection Fault, creating a copy of the content of position " << p << "..." << std::endl;
 				x.append(1, '\0');
 
-				sem_wait(&mutex);
-				if (modified[p] == 0)
+				if ((copies[p] == nullptr) && (modified[p] > 0)) {
 					copies[p] = new char[INPUT_SIZE];
-				if (bitmap[p] == 1)
-					// 'copies[p] = buffer[p]' is not the right operation
 					strcpy(copies[p], buffer[p]);
-
+				}
 				x.copy(buffer[p], x.size(), os);
-				modified[p] = 1;
-				sem_post(&mutex);
-
+				sem_post(&data);
 				std::cout << "Sucessfully created a copy of position " << p << "!" << std::endl;
-				//disable protection flag
+				
+				sem_wait(&acess_data);
 				protection[p] = 0;
+				sem_post(&acess_data);
+				
 				return 1;
 			}
 		}
-		/*int read(int p, int len, int offset) {
-			int i;
-
-			std::cout << std::endl << "========READ OPERATION========" << std::endl;
-			if ((offset + len) > INPUT_SIZE) {
-				std::cerr << "To read more than one row at a time, use the 'showBuffer()' method." << std::endl;
-				return 0;
-			}
-			// Threating the read operation as an example of checkpoint copy to stable storage, because it enables the modify protection to the memory page
-			protection[p] = 1;
-			sleep(2);
-			std::cout << "BUFFER[" << p << "]: " << std::endl;
-			for (i = offset; i < len + offset; i++) {
-				std::cout << buffer[p][i] << " ";
-			}
-			std::cout << std::endl;
-			protection[p] = 0;
-			return 1;
-		}*/
 		int read(int p, int last_p) {
 			// Threating the read operation as an example of checkpoint copy to stable storage, because it enables the modify protection to the memory page
 			int i, j;
@@ -157,32 +146,55 @@ namespace libcow {
 				std::cerr << "Insert a valid read interval." << std::endl;
 				return 0;
 			}
-
-			for (i = p; i <= last_p; i++)
+			sem_wait(&acess_data);
+			for (i = p; i <= last_p; i++) {
 				protection[i] = 1;
-
-			sleep(2);
+				if (copies[i] != nullptr)
+					modified[i]++;
+			}
+			sem_post(&acess_data);
+			
 			std::cout << std::endl << "========READ OPERATION========" << std::endl;
-
+			
 			for (i = p; i <= last_p; i++) {
 				
-				if (modified[i] == 0) {
+				sem_wait(&data);
+				if ((copies[i] == nullptr) && (protection[i] == 1)) {
+
+					//sleep(1);
+					
 					std::cout << "BUFFER [" << i << "]: " << std::endl;
 					for (j = 0; buffer[i][j] != '\0'; j++) {
 						std::cout << buffer[i][j] << " ";
 					}
 					std::cout << std::endl;
-					protection[i] = 0;
+					
+					sem_wait(&acess_data);
+					protection[i] = 0;		
+					sem_post(&acess_data);
+					
+					sem_post(&data);
 				}
 				else {
+
+					//sem_wait(&acess_data);
+
 					std::cout << "COPY [" << i << "]: " << std::endl;
 					for (j = 0; copies[i][j] != '\0'; j++) {
 						std::cout << copies[i][j] << " ";
 					}
 					std::cout << std::endl;
-					protection[i] = 0;
-					delete[] copies[i];
-					modified[i] = 0;
+					modified[i]--;
+					if (modified[i] == 0) {
+						sem_wait(&acess_data);
+						protection[i] = 0;
+						sem_post(&acess_data);
+
+						delete[] copies[i];
+					}
+
+					//sem_post(&acess_data);
+					sem_post(&data);
 				}
 			}
 			return 1;
@@ -199,6 +211,7 @@ namespace libcow {
 		void showBuffer() {
 			int i, j;
 
+			sem_wait(&data);
 			for (i = 0; i < size; i++) {
 
 				if (i < 10)
@@ -228,6 +241,7 @@ namespace libcow {
 				}
 				
 			} // for
+			sem_post(&data);
 			return;
 		} // void
 
@@ -235,25 +249,3 @@ namespace libcow {
 } // namespace
 
 #endif
-
-
-
-/*static memory* startInstance() {
-	if (instance == NULL)
-		instance = new memory();
-	return instance;
-}
-
-static memory* startInstance(int n) {
-	if (instance == NULL)
-		instance = new memory(n);
-	return instance;
-}
-
-void deleteInstance() {
-	if (instance != NULL) {
-		delete instance;
-		instance = NULL;
-	}
-	return;
-}*/
