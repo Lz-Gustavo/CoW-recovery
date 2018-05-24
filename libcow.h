@@ -146,23 +146,23 @@ namespace libcow {
 				std::cerr << "Insert a valid read interval." << std::endl;
 				return 0;
 			}
+
+			std::cout << std::endl << "===> READ OPERATION INIT <===" << std::endl;
 			sem_wait(&acess_data);
 			for (i = p; i <= last_p; i++) {
 				protection[i] = 1;
-				if (copies[i] != nullptr)
+				//if (copies[i] != nullptr)
 					modified[i]++;
 			}
 			sem_post(&acess_data);
 			
-			std::cout << std::endl << "========READ OPERATION========" << std::endl;
-			
 			for (i = p; i <= last_p; i++) {
 				
 				sem_wait(&data);
-				if ((copies[i] == nullptr) && (protection[i] == 1)) {
+				std::cout << "---> READ OPERATION CONTINUE <---" << std::endl;
+				if (copies[i] == nullptr) {
 
 					//sleep(1);
-					
 					std::cout << "BUFFER [" << i << "]: " << std::endl;
 					for (j = 0; buffer[i][j] != '\0'; j++) {
 						std::cout << buffer[i][j] << " ";
@@ -177,23 +177,21 @@ namespace libcow {
 				}
 				else {
 
-					//sem_wait(&acess_data);
-
 					std::cout << "COPY [" << i << "]: " << std::endl;
 					for (j = 0; copies[i][j] != '\0'; j++) {
 						std::cout << copies[i][j] << " ";
 					}
 					std::cout << std::endl;
+					
+					sem_wait(&acess_data);
 					modified[i]--;
 					if (modified[i] == 0) {
-						sem_wait(&acess_data);
-						protection[i] = 0;
-						sem_post(&acess_data);
-
 						delete[] copies[i];
+						copies[i] = nullptr;
 					}
+					protection[i] = 0;
+					sem_post(&acess_data);
 
-					//sem_post(&acess_data);
 					sem_post(&data);
 				}
 			}
