@@ -1,8 +1,8 @@
 #ifndef LIB_COW_H
 #define LIB_COW_H
-//#define _SCL_SECURE_NO_WARNINGS
 
 #include <iostream>
+#include <string>
 #include <string.h>
 #include <thread>
 #include <semaphore.h>
@@ -16,9 +16,11 @@ namespace libcow {
 	private:
 		int *bitmap, *modified, *protection;
 		char **buffer, **copies;
-		int size;
+		int size, log;
 		sem_t acess_data;
 		sem_t data;
+
+		int page_faults, mem_usage, num_alloc_copy, num_dealloc_copy;
 
 		char** getBuffer(int len, int offset) {
 			// returns a char array inside the major buffer
@@ -40,28 +42,46 @@ namespace libcow {
 		memory() {
 			buffer = new char*[DEFAULT_S];
 			for (int i = 0; i < DEFAULT_S; i++)
-				buffer[i] = new char[INPUT_SIZE];
+				buffer[i] = new char[INPUT_SIZE]();
 
 			copies = new char*[DEFAULT_S];
+			for (int i = 0; i < DEFAULT_S; i++)
+				copies[i] = nullptr;
+
 			bitmap = new int[DEFAULT_S]();
 			modified = new int[DEFAULT_S]();
 			protection = new int[DEFAULT_S]();
 			size = DEFAULT_S;
+			log = 0;
 			sem_init(&acess_data, 0, 1);
 			sem_init(&data, 0, 1);
+
+			page_faults = 0;
+			mem_usage = 0;
+			num_alloc_copy = 0;
+			num_dealloc_copy = 0;
 		}
-		memory(int n) {
+		memory(int n, int log_flag) {
 			buffer = new char*[n];
 			for (int i = 0; i < n; i++)
-				buffer[i] = new char[INPUT_SIZE];
+				buffer[i] = new char[INPUT_SIZE]();
 
 			copies = new char*[n];
+			for (int i = 0; i < n; i++)
+				copies[i] = nullptr;
+
 			bitmap = new int[n]();
 			modified = new int[n]();
 			protection = new int[n]();
 			size = n;
+			log = log_flag;
 			sem_init(&acess_data, 0, 1);
 			sem_init(&data, 0, 1);
+
+			page_faults = 0;
+			mem_usage = 0;
+			num_alloc_copy = 0;
+			num_dealloc_copy = 0;
 		}
 		~memory() {
 			int i;
@@ -93,7 +113,7 @@ namespace libcow {
 			sem_wait(&acess_data);
 
 			if ((protection[p] == 1) && (copies[p] != nullptr)) {
-				std::cerr << "Insufficient memory avaiable to allocate a new copy, clear some data to continue." << std::endl;
+				std::cerr << "Insufficient memory avaiable to allocate a new copy at " << p << ", clear some data to continue." << std::endl;
 				sem_post(&acess_data);
 				return 0;
 			}
@@ -103,15 +123,18 @@ namespace libcow {
 				sem_post(&acess_data);
 
 				sem_wait(&data);
-				std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
-				std::cout << "Trying to allocate at position " << p << "..." << std::endl;
-				x.append(1, '\0');
+				if (log) {
+					std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
+					std::cout << "Trying to allocate at position " << p << "..." << std::endl;
+				}
 
+				x.append(1, '\0');
 				x.copy(buffer[p], x.size(), os);
 				bitmap[p] = 1;
 				sem_post(&data);
 
-				std::cout << "Sucessfully allocated at position " << p << "!" << std::endl;
+				if (log)
+					std::cout << "Sucessfully allocated at position " << p << "!" << std::endl;
 				return 1;
 			}
 			else {
@@ -119,18 +142,25 @@ namespace libcow {
 				sem_post(&acess_data);
 
 				sem_wait(&data);
-				std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
-				std::cout << "Memory Protection Fault, creating a copy of the content of position " << p << "..." << std::endl;
+				if (log) {
+					std::cout << std::endl << "========WRITE OPERATION========" << std::endl;
+					std::cout << "Memory Protection Fault, creating a copy of the content of position " << p << "..." << std::endl;
+					page_faults++;
+				}
+				
 				x.append(1, '\0');
-
-				if ((copies[p] == nullptr) && (modified[p] > 0)) {
+				//if (copies[p] == nullptr) {
 					copies[p] = new char[INPUT_SIZE];
 					strcpy(copies[p], buffer[p]);
-				}
+					num_alloc_copy++;
+				//}
 				x.copy(buffer[p], x.size(), os);
+				bitmap[p] = 1;
+
+				if (log)
+					std::cout << "Sucessfully created a copy of position " << p << "!" << std::endl;
 				sem_post(&data);
-				std::cout << "Sucessfully created a copy of position " << p << "!" << std::endl;
-				
+
 				sem_wait(&acess_data);
 				protection[p] = 0;
 				sem_post(&acess_data);
@@ -146,12 +176,18 @@ namespace libcow {
 				std::cerr << "Insert a valid read interval." << std::endl;
 				return 0;
 			}
+			if (last_p < p) {
+				std::cerr << "Final position must be bigger than initial." << std::endl;
+				return 0;
+			}
 
-			std::cout << std::endl << "===> READ OPERATION INIT <===" << std::endl;
+			if (log)
+				std::cout << std::endl << "===> READ OPERATION " << p << " to " << last_p << " INIT <===" << std::endl;
+			
 			sem_wait(&acess_data);
 			for (i = p; i <= last_p; i++) {
 				protection[i] = 1;
-				//if (copies[i] != nullptr)
+				if (copies[i] != nullptr)
 					modified[i]++;
 			}
 			sem_post(&acess_data);
@@ -159,17 +195,24 @@ namespace libcow {
 			for (i = p; i <= last_p; i++) {
 				
 				sem_wait(&data);
-				std::cout << "---> READ OPERATION CONTINUE <---" << std::endl;
+				
+				if (log)
+					std::cout << "---> READ OPERATION CONTINUE <---" << std::endl;
+				
 				if (copies[i] == nullptr) {
 
 					//sleep(1);
-					std::cout << "BUFFER [" << i << "]: " << std::endl;
-					for (j = 0; buffer[i][j] != '\0'; j++) {
-						std::cout << buffer[i][j] << " ";
+
+					if (log) {
+						std::cout << "BUFFER [" << i << "]: " << std::endl;
+						for (j = 0; buffer[i][j] != '\0'; j++) {
+							std::cout << buffer[i][j] << " ";
+						}
+						std::cout << std::endl;
 					}
-					std::cout << std::endl;
-					
+
 					sem_wait(&acess_data);
+					//modified[i]--;
 					protection[i] = 0;		
 					sem_post(&acess_data);
 					
@@ -177,19 +220,22 @@ namespace libcow {
 				}
 				else {
 
-					std::cout << "COPY [" << i << "]: " << std::endl;
-					for (j = 0; copies[i][j] != '\0'; j++) {
-						std::cout << copies[i][j] << " ";
+					if (log) {
+						std::cout << "COPY [" << i << "]: " << std::endl;
+						for (j = 0; copies[i][j] != '\0'; j++) {
+							std::cout << copies[i][j] << " ";
+						}
+						std::cout << std::endl;
 					}
-					std::cout << std::endl;
-					
+
 					sem_wait(&acess_data);
 					modified[i]--;
-					if (modified[i] == 0) {
+					if (modified[i] <= 0) {
 						delete[] copies[i];
 						copies[i] = nullptr;
+						protection[i] = 0;
+						num_dealloc_copy++;
 					}
-					protection[i] = 0;
 					sem_post(&acess_data);
 
 					sem_post(&data);
@@ -228,7 +274,7 @@ namespace libcow {
 					}
 					std::cout << " ]    [ " << protection[i] << " ]    ";
 				}
-				if (modified[i] == 0)
+				if (copies[i] == nullptr)
 					std::cout << "[    ****    ]" << std::endl;
 				else {
 					std::cout << "[ ";
@@ -241,7 +287,20 @@ namespace libcow {
 			} // for
 			sem_post(&data);
 			return;
-		} // void
+		}
+		void showInfo() {
+
+			for (int i = 0; i < size; i++) {
+				if (bitmap[i] == 1)
+					mem_usage++;
+			}
+
+			std::cout << "=====BUFFER STATUS=====" << std::endl;
+			std::cout << "page_faults: " << page_faults << std::endl;
+			std::cout << "mem_usage: " << ((float) mem_usage / size) * 100 << "%" << std::endl;
+			std::cout << "num_alloc_copy: " << num_alloc_copy << std::endl;
+			std::cout << "num_dealloc_copy: " << num_dealloc_copy << std::endl;
+		}
 
 	}; // class
 } // namespace

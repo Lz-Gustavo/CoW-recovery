@@ -1,85 +1,105 @@
-//#define _CRT_SECURE_NO_WARNINGS
-//#define _SCL_SECURE_NO_WARNINGS
-
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
+#include <time.h>
 #include "libcow.h"
 
 using libcow::memory;
 using namespace std;
 
-int* extract(string line) {
-	//receives the input line from the line and returns an int array containing both param
+memory* config_memory(string file_path, vector<int> &data) {
 	
-	int i, pos_comma;
-	int *aux = new int[3];
-	string ext;
+	ifstream config;
+	string line;
+	stringstream all_text;
+	string trash_aux; 
+	int aux;
 
-	if (line.compare(0, 5, "write") == 0) {
+	config.open(file_path, ios::in);
 
-		aux[0] = 0;
-		pos_comma = (int) line.find(',', 6);
-		for (i = (pos_comma + 1); line[i] != ')'; i++ )
-			ext.push_back(line[i]);
-
-		aux[1] = stoi(ext, nullptr, 10);
+	while (getline(config, line)) {
+		all_text << line << " ";
 	}
-	else {
 
-		aux[0] = 1;
-		
-		for (i = (int) (line.find('(') + 1); line[i] != ','; i++)
-			ext.push_back(line[i]);
-
-		aux[1] = stoi(ext, nullptr, 10);
-		ext.clear();
-
-		for (i += 1; line[i] != ')'; i++)
-			ext.push_back(line[i]);
-
-		aux[2] = stoi(ext, nullptr, 10);
+	all_text.seekg(0);
+	for (int i = 0; i < 11; i++) {
+		all_text >> trash_aux >> aux;
+		data.push_back(aux);
 	}
-	return aux;
+
+	config.close();
+	return new memory(data[0], data[1]);
 }
 
-string extract_string(string line) {
-	
-	return (line.substr(line.find('\"') + 1, (line.find(',') - line.find('\"')) - 2));
+void generateReq(memory *&buffer, vector<int> &config, vector<thread> &list_threads) {
+
+	// CONFIG NOTE:
+	//
+	// [0] -> TAM
+	// [1] -> LOG
+	// [2] -> OPS
+	//
+	// [3] -> WRITE(%)
+	// [4] -> W_MIN_POS
+	// [5] -> W_MAX_POS
+	// [6] -> W_WAIT(sec)
+	//
+	// [7] -> READ(%)
+	// [8] -> R_MIN_POS
+	// [9] -> R_MAX_POS
+	// [10] -> R_WAIT(sec)
+
+	int i;
+	srand(time(NULL));
+	int pos, final_pos;
+
+	for (i = 0; i < config[2]; i++) {
+
+		if ((rand() % 100) < (config[3])) {
+			
+			sleep(config[6]);
+			pos = rand() % (config[5] - config[4]) + config[4];
+			list_threads.push_back(thread(&memory::write, buffer, "conteudo", pos));
+		}
+		else {
+
+			sleep(config[10]);
+			pos = rand() % (config[9] - config[8]) + config[8];
+			final_pos = rand() % (config[9] - config[8]) + config[8];
+
+			while (final_pos < pos) {
+				pos = rand() % (config[9] - config[8]) + config[8];
+				final_pos = rand() % (config[9] - config[8]) + config[8];
+			}
+
+			list_threads.push_back(thread(&memory::read, buffer, pos, final_pos));
+		}
+	}
+
+	for (i = 0; i < list_threads.size(); i++)
+		list_threads[i].join();
+
+	return;
 }
 
 int main() {
 
 	int i;
 	int* data;
-	ifstream input;
 	string line, ext;
 	vector<thread> list_threads;
+	vector<int> config_data;
 
-	// creates the data buffer and shows it initial state
-	memory* m1 = new memory(20);
-	
-	input.open("input.txt", ios::in);
+	memory* m1 = config_memory("config.txt", config_data);
 
-	while (getline(input, line)) {
+	generateReq(m1, config_data, list_threads);
 
-		data = extract(line);
-		if (data[0] == 0) {
+	m1->showBuffer();
 
-			ext = extract_string(line);
-			//cout << "extraiu: " << ext << endl;
-
-			list_threads.push_back(thread(&memory::write, m1, ext, data[1]));
-		}
-		else if (data[0] == 1) {
-			list_threads.push_back(thread(&memory::read, m1, data[1], data[2]));
-		}
-	}
-
-	for (i = 0; i < list_threads.size(); i++)
-		list_threads[i].join();
+	m1->showInfo();
 
 	return 0;
 }

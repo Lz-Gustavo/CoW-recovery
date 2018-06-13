@@ -1,6 +1,0 @@
-write("entrada", 2)
-write("teste", 3)
-read(2, 3)
-write("opamaoi", 2)
-read(2, 2)
-read(2, 2)

@@ -1,0 +1,11 @@
+TAM: 40
+LOG: 1
+OPS: 100
+WRITE(%): 50
+W_MIN_POS: 0
+W_MAX_POS: 39
+W_WAIT(sec): 0
+READ(%): 50
+R_MIN_POS: 0
+R_MAX_POS: 39
+R_WAIT(sec): 0
