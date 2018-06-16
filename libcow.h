@@ -139,7 +139,7 @@ namespace libcow {
 			}
 			else {
 				// buffer position is protected and dont has a copy being used
-				sem_post(&acess_data);
+				//sem_post(&acess_data);
 
 				sem_wait(&data);
 				if (log) {
@@ -147,13 +147,14 @@ namespace libcow {
 					std::cout << "Memory Protection Fault, creating a copy of the content of position " << p << "..." << std::endl;
 					page_faults++;
 				}
-				
+				//sem_post(&acess_data);
 				x.append(1, '\0');
-				//if (copies[p] == nullptr) {
+
+				if ((copies[p] == nullptr) && (modified[p] <= 0)){
 					copies[p] = new char[INPUT_SIZE];
 					strcpy(copies[p], buffer[p]);
 					num_alloc_copy++;
-				//}
+				}
 				x.copy(buffer[p], x.size(), os);
 				bitmap[p] = 1;
 
@@ -161,12 +162,13 @@ namespace libcow {
 					std::cout << "Sucessfully created a copy of position " << p << "!" << std::endl;
 				sem_post(&data);
 
-				sem_wait(&acess_data);
+				//sem_wait(&acess_data);
 				protection[p] = 0;
 				sem_post(&acess_data);
 				
 				return 1;
 			}
+			//sem_post(&acess_data);
 		}
 		int read(int p, int last_p) {
 			// Threating the read operation as an example of checkpoint copy to stable storage, because it enables the modify protection to the memory page
@@ -190,7 +192,7 @@ namespace libcow {
 				if (copies[i] != nullptr)
 					modified[i]++;
 			}
-			sem_post(&acess_data);
+			//sem_post(&acess_data);
 			
 			for (i = p; i <= last_p; i++) {
 				
@@ -211,7 +213,7 @@ namespace libcow {
 						std::cout << std::endl;
 					}
 
-					sem_wait(&acess_data);
+					//sem_wait(&acess_data);
 					//modified[i]--;
 					protection[i] = 0;		
 					sem_post(&acess_data);
@@ -228,7 +230,7 @@ namespace libcow {
 						std::cout << std::endl;
 					}
 
-					sem_wait(&acess_data);
+					//sem_wait(&acess_data);
 					modified[i]--;
 					if (modified[i] <= 0) {
 						delete[] copies[i];
