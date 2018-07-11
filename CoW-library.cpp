@@ -10,6 +10,14 @@
 using libcow::memory;
 using namespace std;
 
+void sleep_ms(int milliseconds) {
+
+	struct timespec ts;
+	ts.tv_sec = milliseconds / 1000;
+	ts.tv_nsec = (milliseconds % 1000) * 1000000;
+	nanosleep(&ts, NULL);
+}
+
 memory* config_memory(string file_path, vector<int> &data) {
 	
 	ifstream config;
@@ -25,7 +33,7 @@ memory* config_memory(string file_path, vector<int> &data) {
 	}
 
 	all_text.seekg(0);
-	for (int i = 0; i < 11; i++) {
+	for (int i = 0; i < 13; i++) {
 		all_text >> trash_aux >> aux;
 		data.push_back(aux);
 	}
@@ -34,23 +42,26 @@ memory* config_memory(string file_path, vector<int> &data) {
 	return new memory(data[0], data[1]);
 }
 
-void generateReq(memory *&buffer, vector<int> &config, vector<thread> &list_threads) {
+void worker_generateReq(memory *&buffer, vector<int> config) {
 
 	// CONFIG NOTE:
 	//
 	// [0] -> TAM
 	// [1] -> LOG
 	// [2] -> OPS
+	// [3] -> WORKERS
 	//
-	// [3] -> WRITE(%)
-	// [4] -> W_MIN_POS
-	// [5] -> W_MAX_POS
-	// [6] -> W_WAIT(sec)
+	// [4] -> WRITE(%)
+	// [5] -> W_MIN_POS
+	// [6] -> W_MAX_POS
+	// [7] -> W_WAIT(sec)
 	//
-	// [7] -> READ(%)
-	// [8] -> R_MIN_POS
-	// [9] -> R_MAX_POS
-	// [10] -> R_WAIT(sec)
+	// [8] -> READ(%)
+	// [9] -> R_MIN_POS
+	// [10] -> R_MAX_POS
+	// [11] -> R_WAIT(sec)
+	// 
+	// [12] -> T_TIME
 
 	int i;
 	srand(time(NULL));
@@ -58,25 +69,41 @@ void generateReq(memory *&buffer, vector<int> &config, vector<thread> &list_thre
 
 	for (i = 0; i < config[2]; i++) {
 
-		if ((rand() % 100) < (config[3])) {
+		// thinking time 0 to max specified
+		//sleep_ms((int) rand() % config[12]);
+		
+		if ((rand() % 100) < (config[4])) {
 			
-			sleep(config[6]);
-			pos = rand() % (config[5] - config[4]) + config[4];
-			list_threads.push_back(thread(&memory::write, buffer, "conteudo", pos));
+			pos = rand() % (config[6] - config[5]) + config[5];
+			//list_threads.push_back(thread(&memory::write, buffer, "conteudo", pos));
+			buffer->write("conteudo", pos);
+			sleep(config[7]);
 		}
 		else {
 
-			sleep(config[10]);
-			pos = rand() % (config[9] - config[8]) + config[8];
-			final_pos = rand() % (config[9] - config[8]) + config[8];
+			pos = rand() % (config[10] - config[9]) + config[9];
+			final_pos = rand() % (config[10] - config[9]) + config[9];
 
 			while (final_pos < pos) {
-				pos = rand() % (config[9] - config[8]) + config[8];
-				final_pos = rand() % (config[9] - config[8]) + config[8];
+				pos = rand() % (config[10] - config[9]) + config[9];
+				final_pos = rand() % (config[10] - config[9]) + config[9];
 			}
 
-			list_threads.push_back(thread(&memory::read, buffer, pos, final_pos));
+			buffer->read(pos, final_pos);
+			//list_threads.push_back(thread(&memory::read, buffer, pos, final_pos));
+			sleep(config[11]);
 		}
+	}
+
+	return;
+}
+
+void generateWorkers(memory *&buffer, vector<int> &config, vector<thread> &list_threads) {
+	int i;
+
+	for (i = 0; i < config[3]; i++) {
+
+		list_threads.push_back(thread(worker_generateReq, ref(buffer), config));
 	}
 
 	for (i = 0; i < list_threads.size(); i++)
@@ -95,11 +122,13 @@ int main() {
 
 	memory* m1 = config_memory("config.txt", config_data);
 
-	generateReq(m1, config_data, list_threads);
+	generateWorkers(m1, config_data, list_threads);
 
 	m1->showBuffer();
 
 	m1->showInfo();
+
+	delete m1;
 
 	return 0;
 }
