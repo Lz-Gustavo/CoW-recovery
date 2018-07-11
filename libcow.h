@@ -192,10 +192,10 @@ namespace libcow {
 				if (copies[i] != nullptr)
 					modified[i]++;
 			}
-			//sem_post(&acess_data);
+			sem_post(&acess_data);
 			
 			for (i = p; i <= last_p; i++) {
-				
+				sem_wait(&acess_data);
 				sem_wait(&data);
 				
 				if (log)
@@ -217,7 +217,6 @@ namespace libcow {
 					//modified[i]--;
 					protection[i] = 0;		
 					sem_post(&acess_data);
-					
 					sem_post(&data);
 				}
 				else {
@@ -239,7 +238,6 @@ namespace libcow {
 						num_dealloc_copy++;
 					}
 					sem_post(&acess_data);
-
 					sem_post(&data);
 				}
 			}
