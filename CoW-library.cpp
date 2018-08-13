@@ -74,20 +74,18 @@ void worker_generateReq(memory *&buffer, vector<int> config) {
 		
 		if ((rand() % 100) < (config[4])) {
 			
-			pos = rand() % (config[6] - config[5]) + config[5];
+			pos = rand() % ((config[6] + 1) - config[5]) + config[5];
 			//list_threads.push_back(thread(&memory::write, buffer, "conteudo", pos));
 			buffer->write("conteudo", pos);
 			sleep(config[7]);
 		}
 		else {
 
-			pos = rand() % (config[10] - config[9]) + config[9];
-			final_pos = rand() % (config[10] - config[9]) + config[9];
+			do {
 
-			while (final_pos < pos) {
-				pos = rand() % (config[10] - config[9]) + config[9];
-				final_pos = rand() % (config[10] - config[9]) + config[9];
-			}
+				pos = rand() % ((config[10] + 1) - config[9]) + config[9];
+				final_pos = rand() % ((config[10] + 1) - config[9]) + config[9];
+			} while (final_pos < pos);
 
 			buffer->read(pos, final_pos);
 			//list_threads.push_back(thread(&memory::read, buffer, pos, final_pos));
