@@ -71,7 +71,8 @@ void worker_generateReq(memory *&buffer, vector<int> config) {
 
 		// thinking time 0 to max specified
 		//sleep_ms((int) rand() % config[12]);
-		
+		sleep_ms((int) config[12]);
+
 		if ((rand() % 100) < (config[4])) {
 			
 			pos = rand() % ((config[6] + 1) - config[5]) + config[5];
