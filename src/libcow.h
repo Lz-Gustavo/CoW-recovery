@@ -21,6 +21,7 @@ namespace libcow {
 		sem_t data;
 
 		int page_faults, mem_usage, num_alloc_copy, num_dealloc_copy;
+		int num_read, num_write;
 
 		char** getBuffer(int len, int offset) {
 			// returns a char array inside the major buffer
@@ -60,6 +61,8 @@ namespace libcow {
 			mem_usage = 0;
 			num_alloc_copy = 0;
 			num_dealloc_copy = 0;
+			num_read = 0;
+			num_write = 0;
 		}
 		memory(int n, int log_flag) {
 			buffer = new char*[n];
@@ -82,6 +85,8 @@ namespace libcow {
 			mem_usage = 0;
 			num_alloc_copy = 0;
 			num_dealloc_copy = 0;
+			num_read = 0;
+			num_write = 0;
 		}
 		~memory() {
 			int i;
@@ -131,6 +136,7 @@ namespace libcow {
 				x.append(1, '\0');
 				x.copy(buffer[p], x.size(), os);
 				bitmap[p] = 1;
+				num_write++;
 				sem_post(&data);
 
 				if (log)
@@ -161,6 +167,7 @@ namespace libcow {
 				sem_post(&data);
 
 				protection[p] = 0;
+				num_write++;
 				sem_post(&acess_data);
 				
 				return 1;
@@ -188,6 +195,7 @@ namespace libcow {
 				if (copies[i] != nullptr)
 					modified[i]++;
 			}
+			num_read++;
 			sem_post(&acess_data);
 			
 			for (i = p; i <= last_p; i++) {
@@ -207,7 +215,7 @@ namespace libcow {
 						std::cout << std::endl;
 					}
 
-					protection[i] = 0;		
+					protection[i] = 0;	
 					sem_post(&acess_data);
 					sem_post(&data);
 				}
@@ -291,6 +299,9 @@ namespace libcow {
 			std::cout << "mem_usage: " << ((float) mem_usage / size) * 100 << "%" << std::endl;
 			std::cout << "num_alloc_copy: " << num_alloc_copy << std::endl;
 			std::cout << "num_dealloc_copy: " << num_dealloc_copy << std::endl;
+			std::cout << "num_read operations: " << num_read << std::endl;
+			std::cout << "num_write operations: " << num_write << std::endl;
+			std::cout << "TOTAL: " << num_read + num_write << std::endl;
 		}
 
 	}; // class

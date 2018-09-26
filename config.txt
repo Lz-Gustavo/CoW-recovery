@@ -1,5 +1,5 @@
 TAM: 3000
-LOG: 1
+LOG: 0
 OPS: 300
 WORKERS: 50
 WRITE(%): 70
@@ -10,4 +10,5 @@ READ(%): 30
 R_MIN_POS: 0
 R_MAX_POS: 2999
 R_WAIT(sec): 0
-T_TIME(msec): 500
+T_TIME(msec): 0
+SUPERVISOR(sec): 60

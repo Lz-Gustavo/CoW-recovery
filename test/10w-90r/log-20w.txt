@@ -1,0 +1,8 @@
+=====BUFFER STATUS=====
+page_faults: 0
+mem_usage: 62.5667%
+num_alloc_copy: 1308
+num_dealloc_copy: 1308
+num_read operations: 26624
+num_write operations: 2979
+TOTAL: 29603
